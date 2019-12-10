@@ -153,13 +153,8 @@ func NewFromString(value string) (Decimal, error) {
 		// an int
 		intString = value
 	} else if len(parts) == 2 {
-		// strip the insignificant digits for more accurate comparisons.
-		decimalPart := strings.TrimRight(parts[1], "0")
-		intString = parts[0] + decimalPart
-		if intString == "" && parts[1] != "" {
-			intString = "0"
-		}
-		expInt := -len(decimalPart)
+		intString = parts[0] + parts[1]
+		expInt := -len(parts[1])
 		exp += int64(expInt)
 	} else {
 		return Decimal{}, fmt.Errorf("can't convert %s to decimal: too many .s", value)
@@ -851,6 +846,7 @@ func (d Decimal) RoundBank(places int32) Decimal {
 // 	  100: 100 cent rounding 3.50 => 4.00
 // For more details: https://en.wikipedia.org/wiki/Cash_rounding
 func (d Decimal) RoundCash(interval uint8) Decimal {
+	iD := d.RemoveInsignificantDigits()
 	var iVal *big.Int
 	switch interval {
 	case 5:
@@ -858,16 +854,17 @@ func (d Decimal) RoundCash(interval uint8) Decimal {
 	case 10:
 		iVal = tenInt
 	case 15:
-		if d.exp < 0 {
+		if iD.exp < 0 {
 			// TODO: optimize and reduce allocations
-			orgExp := d.exp
-			dOne := New(10^-int64(orgExp), orgExp)
-			d2 := d
+			d2 := iD
 			d2.exp = 0
 			if d2.Mod(fiveDec).Equal(Zero) {
+				orgExp := iD.exp
+				dOne := New(10^-int64(orgExp), orgExp)
+
 				d2.exp = orgExp
 				d2 = d2.Sub(dOne)
-				d = d2
+				iD = d2
 			}
 		}
 		iVal = tenInt
@@ -883,8 +880,9 @@ func (d Decimal) RoundCash(interval uint8) Decimal {
 	dVal := Decimal{
 		value: iVal,
 	}
+
 	// TODO: optimize those calculations to reduce the high allocations (~29 allocs).
-	return d.Mul(dVal).Round(0).Div(dVal).Truncate(2)
+	return iD.Mul(dVal).Round(0).Div(dVal).Truncate(2)
 }
 
 // Floor returns the nearest integer value less than or equal to d.
@@ -1462,3 +1460,28 @@ func (d Decimal) satan() Decimal {
   	}
   	return y
   }
+
+// RemoveInsignificantDigits removes the value and expo
+func (d Decimal) RemoveInsignificantDigits() Decimal {
+	if d.exp > 0 {
+		return New(d.value.Int64(), d.exp)
+	}
+
+	var insignificantZeros32 int32 = 0
+	valueStr := d.value.String()
+
+	for i := len(valueStr) - 1; i >= 0; i-- {
+		if valueStr[i] != '0' {
+			break
+		}
+
+		insignificantZeros32++
+	}
+
+	newValue, _ := strconv.ParseInt(valueStr[:len(valueStr)-int(insignificantZeros32)], 10, 64)
+
+	return Decimal{
+		value: big.NewInt(newValue),
+		exp:   d.exp + insignificantZeros32,
+	}
+}

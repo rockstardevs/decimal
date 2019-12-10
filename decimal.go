@@ -1461,7 +1461,7 @@ func (d Decimal) satan() Decimal {
   	return y
   }
 
-// RemoveInsignificantDigits removes the value and expo
+// RemoveInsignificantDigits removes the insignificant digits from the value and updates the exponent accordingly
 func (d Decimal) RemoveInsignificantDigits() Decimal {
 	if d.exp > 0 {
 		return New(d.value.Int64(), d.exp)

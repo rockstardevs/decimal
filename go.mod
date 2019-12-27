@@ -1,4 +1,4 @@
-module github.com/shopspring/decimal
+module github.com/rockstardevs/decimal
 
 go 1.13
 

@@ -20,12 +20,16 @@ package decimal
 import (
 	"database/sql/driver"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
 	"math"
 	"math/big"
 	"strconv"
 	"strings"
+
+	"go.mongodb.org/mongo-driver/bson/bsontype"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
 )
 
 // DivisionPrecision is the number of decimal places in the result when it
@@ -999,23 +1003,21 @@ func (d Decimal) MarshalBinary() (data []byte, err error) {
 	return
 }
 
-// GetBSON implements the bson.Getter interface
-func (d Decimal) GetBSON() (interface{}, error) {
+// MarshalBSONValue implements the bson.ValueMarshaler interface.
+func (d Decimal) MarshalBSONValue() (bsontype.Type, []byte, error) {
 	// Pass through string to create Mongo Decimal128 type
-	dec128, err := bson.ParseDecimal128(d.String())
+	dec128, err := primitive.ParseDecimal128(d.String())
 	if err != nil {
-		return nil, err
+		return bsontype.Null, nil, err
 	}
-	return dec128, nil
+	return bsontype.Decimal128, bsoncore.AppendDecimal128(nil, dec128), nil
 }
 
-// SetBSON implements the bson.Setter interface
-func (d *Decimal) SetBSON(raw bson.Raw) error {
-	// Unmarshal as Mongo Decimal128 first then pass through string to obtain Decimal
-	var dec128 bson.Decimal128
-	berr := raw.Unmarshal(&dec128)
-	if berr != nil {
-		return berr
+// UnmarshalBSONValue implements the bsoncodec.ValueUnmarshaler interface.
+func (d *Decimal) UnmarshalBSONValue(t bsontype.Type, raw []byte) error {
+	dec128, _, ok := bsoncore.ReadDecimal128(raw)
+	if !ok {
+		return errors.New("failed to decode bytes as decimal128")
 	}
 	dec, derr := NewFromString(dec128.String())
 	if derr != nil {
